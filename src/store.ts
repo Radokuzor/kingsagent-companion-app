@@ -1,69 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-import type { ArmedReminder, Instruction } from './instructions';
-
-const KEY_REMINDERS = 'ka.reminders.v1';
-const KEY_SETTINGS = 'ka.settings.v1';
-const KEY_DEVICE = 'ka.deviceId.v1';
 
 /**
- * The site the WebView opens.
+ * Small, non-secret device state. Anything that is a credential lives in
+ * src/session.ts (the OS secure store) instead, never here.
  *
- * Deliberately NOT hardcoded here. It lives in `app.json` under
- * `expo.extra.siteUrl`, so when the domain moves there is exactly ONE line to
- * change in config, and the runtime Settings field can override it with no
- * rebuild at all.
+ * What used to be in this file and is deliberately gone: `startUrl` (the
+ * WebView's address), `feedUrl` (the paste/pull instruction transport) and
+ * `kcId`. The app is a native client of the backend API now — it signs in
+ * with KingsChat itself and is handed the kcId with its session, so there is
+ * nothing left to point at a website or to type in by hand.
  */
-const CONFIGURED_SITE_URL =
-  (Constants.expoConfig?.extra as { siteUrl?: string } | undefined)?.siteUrl?.trim() ?? '';
 
-export const START_URL_DEFAULT = CONFIGURED_SITE_URL;
+const KEY_DEVICE = 'ka.deviceId.v1';
+const KEY_LAST_SYNC = 'ka.lastSync.v1';
 
-export interface Settings {
-  /** What the app shows. Seeded from app.json, overridable on the device. */
-  startUrl: string;
-  /** Optional: GET <feedUrl>?device=<deviceId> returns an instruction payload. */
-  feedUrl: string;
-  /** Optional: set once the agent knows which kcId this device belongs to. */
-  kcId: string;
-}
-
-export const DEFAULT_SETTINGS: Settings = {
-  startUrl: START_URL_DEFAULT,
-  feedUrl: '',
-  kcId: '',
-};
-
-export async function loadReminders(): Promise<ArmedReminder[]> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_REMINDERS);
-    if (!raw) return [];
-    const list = JSON.parse(raw) as ArmedReminder[];
-    return Array.isArray(list) ? list : [];
-  } catch {
-    return [];
-  }
-}
-
-export async function saveReminders(list: ArmedReminder[]): Promise<void> {
-  await AsyncStorage.setItem(KEY_REMINDERS, JSON.stringify(list));
-}
-
-export async function loadSettings(): Promise<Settings> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_SETTINGS);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
-  } catch {
-    return { ...DEFAULT_SETTINGS };
-  }
-}
-
-export async function saveSettings(settings: Settings): Promise<void> {
-  await AsyncStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
-}
-
-/** Cheap per-install id so the agent can address THIS phone. */
+/** Stable per-install id, so the backend can address THIS phone. */
 export async function deviceId(): Promise<string> {
   const existing = await AsyncStorage.getItem(KEY_DEVICE);
   if (existing) return existing;
@@ -72,7 +23,12 @@ export async function deviceId(): Promise<string> {
   return fresh;
 }
 
-/** Same instruction id twice is armed once. */
-export function alreadyArmed(list: ArmedReminder[], instruction: Instruction): boolean {
-  return list.some((r) => r.id === instruction.id);
+export async function lastSyncAt(): Promise<number | null> {
+  const raw = await AsyncStorage.getItem(KEY_LAST_SYNC);
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function markSynced(at = Date.now()): Promise<void> {
+  await AsyncStorage.setItem(KEY_LAST_SYNC, String(at));
 }

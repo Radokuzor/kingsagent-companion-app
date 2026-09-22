@@ -1,125 +1,111 @@
 # Kings Agent — companion app (build brief)
 
-> Paste this into Claude Code, or copy it over the template's placeholder:
-> `cp BUILD-BRIEF.md CLAUDE.md` (that has to be your move — the tool blocks me from writing CLAUDE.md itself).
+> Supersedes the original WebView-era brief. What this file described before —
+> a WebView tab showing the website, a paste-an-instruction tab, a kcId typed
+> or scraped out of the site's session, Expo Go, EAS cloud builds from a Mac —
+> is **gone**. Do not reintroduce any of it.
 
 ## What this is
-Android companion for the KingsChat agent. Two jobs, nothing else:
 
-1. Show the site people already use — `https://kingsagent.gildsociety.com` — as a real app.
-2. Receive **programmable instructions from the agent** and execute them on the device as **real alarms**.
+The **execution surface** for the Kings Agent bot. A KingsChat user asks the
+bot for a reminder; this app rings their phone like an alarm clock — offline,
+with the app closed, after a reboot. That is the one thing a chat bot
+fundamentally cannot do, and it is the entire reason this app exists.
 
-## Seeing it work WITHOUT a phone (Mac preview)
-`npx expo start --web` runs the real app in Safari at `http://localhost:8081`. Useful for fast UI iteration
-with Claude Code. Needs `react-dom` + `react-native-web` (already installed).
+It is a **native client of the Kings Agent backend**, not a browser for the
+website. Two screens: Alarms and Settings, behind a KingsChat sign-in.
 
-Two things do NOT work in the web preview, and both are expected, not bugs:
-- **The App tab shows `React Native WebView does not support this platform.`**
-  `react-native-webview` has no web implementation. The WebView only exists on a real device.
-- **Notifications are a no-op.** Expo logs `[expo-notifications] Listening to push token changes is not yet
-  fully supported on web`. So the alarm can never be proven in the browser. It has to be the phone.
+## The one design rule
 
-Verified live on the Mac preview 2026-09-22: all three tabs render, the tab switcher works, and the app
-generates and persists a real device id (`dev_lc13cjia2zx0`).
+**The device owns the schedule. The server only sends changes.**
 
-## Getting it onto the Android phone
-1. Install **Expo Go** from the Play Store.
-2. Phone and Mac on the same Wi-Fi. The Mac is `192.168.10.115`.
-3. In Terminal: `cd ~/Documents/companion-app && npx expo start`, then scan the QR with Expo Go.
-4. If the phone cannot see the Mac (some routers isolate clients): `npx expo start --tunnel`.
-5. Only ever run ONE dev server at a time. Two Metro instances will fight over port 8081 and this Mac has 8 GB.
-6. The proof that matters: **Alarms tab → Test alarm in 20 seconds → lock the phone → it should ring.**
+Firestore holds the truth about a reminder. The phone mirrors it and arms its
+own `AlarmManager.setAlarmClock()` alarm, which then fires with no network, no
+server and the app closed. Push (FCM) is *only* a nudge to sync sooner — never
+the mechanism. So agent reliability equals **one successful sync**; say that to
+users rather than promising instant push.
 
-## Building the installable APK (EAS cloud, no local SDK needed)
-There is no JDK or Android SDK on this Mac, so `npm run android` and `npx expo run:android` cannot work.
-The APK is built in Expo's cloud.
+Corollary, and the reason `USE_EXACT_ALARM` must never leave the manifest: it
+is what exempts this app from Android's **restricted** standby bucket, where an
+app unopened for 8 days may fire only one alarm per day.
 
-- **Expo account:** `king_kuz`
-- **EAS project:** `@king_kuz/kings-agent`
-- **projectId:** `39e34497-8899-410f-9745-e2cf912c6ccb` (stored in `app.json` -> `expo.extra.eas.projectId`)
-- **Dashboard:** https://expo.dev/accounts/king_kuz/projects/kings-agent
+## How signing in works
 
-```
-cd ~/Documents/companion-app
-npx eas-cli@latest build -p android --profile preview
-```
+KingsChat locks a developer project's redirect URL to the website's
+`/auth/callback` and it cannot be repointed at a phone, so the app cannot catch
+the authorization code. It is brokered by the backend instead:
 
-`preview` = `buildType: apk` + `distribution: internal`, standalone, so it runs with no dev server.
-`production` = `.aab` for the Play Store. Never use `development` for something you hand out; it needs Metro.
+1. `POST /api/auth/app-pair/start {device_id}` → `{pair_id, secret, consent_url}`
+2. The app opens `consent_url` in a **Chrome Custom Tab** — KingsChat's own
+   sign-in, via the website's `/app-login`. Only the pairing id is in the URL.
+   We never see anyone's password and never render a login form.
+3. The website finishes the exchange and binds the account to the pairing.
+4. The app polls `POST /api/auth/app-pair/claim {pair_id, secret}` and receives
+   `{token, refresh_token, user, kcId}` over TLS. The secret never entered a URL.
 
-Two things that bite:
-- The **keystore** EAS generates is the only thing that lets a later version install over the old one.
-  Do not delete it from the Expo dashboard.
-- The **package name** (`com.kingschat.kingsagent`) is permanent. Change it later and Android treats it as a
-  brand new app, so every user has to uninstall and reinstall. Decide it before distributing.
+That consent is also **authorisation**: KingsChat's developer API refuses to
+deliver to, or send as, anyone who has not consented to this project. Signing
+in here is what makes "the bot can DM you" true.
 
-## The one design rule (do not break it)
-**Never design "server pushes, phone rings."** FCM/APNs are best-effort, delayed by Doze and dropped offline.
-The reminder registers a **local alarm on the device at creation time**. Push is only sync and fallback.
-That is why the app exists: it rings with no internet, in airplane mode, with our server down.
+The **kcId is plumbing** — it is stored, never displayed, never logged, never
+put in a URL. The person sees their KingsChat name.
 
-## Stack and commands
-Expo SDK 57 / React Native 0.86 / TypeScript. This Mac has **no JDK, no Android Studio, no Android SDK** — do not
-try to build locally.
+## Building it (locally, no Expo Go, no EAS)
 
-```
-npm start              # npx expo start — scan the QR with Expo Go on the Android phone
-npx tsc --noEmit       # typecheck (must be clean)
-npx expo lint          # lint
+This machine has a JDK at `~/.jdks/temurin-17` and the Android SDK at
+`~/Android/Sdk` (platform 36, build-tools 36, platform-tools). The system
+`java-21-openjdk` is a **JRE with no compiler** — pointing Gradle at it fails
+with `does not provide the required capabilities: [JAVA_COMPILER]`.
+
+```bash
+export JAVA_HOME="$HOME/.jdks/temurin-17"
+export ANDROID_HOME="$HOME/Android/Sdk"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+npx tsc --noEmit                      # must be clean
+cd android && ./gradlew assembleDebug # -> app/build/outputs/apk/debug/
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-- Local notifications **work** in Expo Go.
-- Remote push does **not** work in Expo Go (removed on Android in SDK 53+). Push needs a dev build.
-- Installable APK later, cloud-built: `npx eas-cli@latest build -p android --profile preview`
-- Android exact alarms need `SCHEDULE_EXACT_ALARM` — already set in `app.json`. Keep it there.
+`android/` is generated and gitignored. **After any `npx expo prebuild`**, run
+`bash scripts/restore-native-patches.sh` — prebuild silently deletes the five
+alarm components, the four extra permissions, the uncompressed alarm sound, the
+signing config and `MainApplication.kt`'s `AlarmPackage()` registration. That
+last one is the dangerous loss: the app still builds and runs, it just quietly
+stops being a real alarm. The script re-checks all of it and fails loudly.
+
+FCM needs a real `google-services.json` — see `PLACEHOLDER-google-services.md`.
 
 ## Files
+
 | File | Role |
 |---|---|
-| `App.tsx` | 3 tabs: **App** (WebView), **Alarms** (armed list + settings), **Arm** (paste an instruction) |
-| `src/instructions.ts` | The envelope, the parser, the scheduler, the permission asks |
-| `src/store.ts` | AsyncStorage persistence, device id, dedupe helper |
-
-## The contract — the agent's side of this app
-The agent sends this JSON. Same `id` twice is armed once. Unknown fields are ignored.
-
-```json
-{
-  "instructions": [
-    {
-      "id": "rem_20260922_1400",
-      "type": "reminder",
-      "title": "Workout",
-      "body": "Legs day. 45 minutes.",
-      "at": "2026-09-22T14:00:00+01:00",
-      "repeat": "weekdays",
-      "data": { "from": "kingschat" }
-    }
-  ]
-}
-```
-
-- `type`: `reminder` | `task` | `command`
-- `at`: ISO 8601 **with offset** (`+01:00` for Lagos). Required for `reminder`.
-- `repeat`: `none` | `daily` | `weekdays` | `weekly`
-- `data`: free-form, passed through to the notification payload
-
-A single object or a bare array is also accepted. Do not change these names.
-
-## Scope for v1 — do NOT add these
-- No chat client. KingsChat stays the conversation surface.
-- No login / OAuth / Supabase / Firebase SDK in the app.
-- No expo-router — v1 uses a hand-rolled 3-tab switcher on purpose (fewer moving parts, 2-hour build).
-- No server code in this repo. No app store submission. No state library.
-
-## After v1 works, in this order
-1. Deep link: the agent DMs `kingsagent://arm?d=<base64 instruction json>` and tapping it arms directly.
-2. Pairing: show the device id in the app; the agent writes `users/{kcId}/devices/{deviceId}` in Firestore.
-3. Feed URL: point `Settings → Instruction feed URL` at a real endpoint (or Firestore REST).
-4. EAS dev build + FCM — for **sync only**. Alarms stay local.
+| `App.tsx` | Boot, session, the Alarms/Settings tabs, and the sync triggers (launch, resume, push). |
+| `src/SignInScreen.tsx` | The Custom Tab pairing flow. |
+| `src/AlarmsScreen.tsx` | Agent alarms and the person's own, add/remove, test alarm. |
+| `src/SettingsScreen.tsx` | Account, the four Android alarm gates, push status, sign out. |
+| `src/session.ts` | The session, in **expo-secure-store** — never AsyncStorage. |
+| `src/api.ts` | The one backend client. One silent refresh on a 401, then re-consent. |
+| `src/sync.ts` | `syncReminders` — the reconcile. Idempotent by reminder id. |
+| `src/push.ts` | FCM, modular API (v26 removed the `messaging()` default export). |
+| `src/nativeAlarm.ts` | JS bridge to the Kotlin alarm. **Do not rewrite.** |
+| `src/instructions.ts` | The agent instruction envelope, parser and validator. |
+| `src/store.ts` | Device id and last-sync time. Nothing secret. |
+| `src/theme.ts`, `src/ui.tsx` | Colour tokens and the shared UI pieces. |
+| `native-patches/` | Every hand-written native file, plus the restore checklist. |
 
 ## Definition of done for any change
+
 - `npx tsc --noEmit` is clean.
-- The test alarm rings with the phone **locked** and in **airplane mode**.
+- `./gradlew assembleDebug` succeeds and the alarm checklist in
+  `native-patches/README.md` still passes on the APK.
+- A test alarm rings with the phone **locked** and in **airplane mode**.
 - A past `at` time is rejected, not silently scheduled.
-- A duplicate `id` does not create a second alarm.
+- A duplicate reminder id does not create a second alarm.
+
+## Scope
+
+In: alarms, sync, sign-in, settings. Out for now: the personal space
+(notes/todos/contacts/documents) as native screens, and reading the agent
+conversation in-app — phases 2 and 3 of
+`Radokuzor/KingsAgent` → `docs/architecture/companion-app-architecture-brief.md`.

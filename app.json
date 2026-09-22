@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kingschat.kingsagent"
@@ -13,7 +13,7 @@
     "android": {
       "package": "com.kingschat.kingsagent",
       "adaptiveIcon": {
-        "backgroundColor": "#000000",
+        "backgroundColor": "#0B1020",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -26,22 +26,26 @@
         "USE_EXACT_ALARM",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
-      ]
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-notifications",
+      "expo-secure-store",
+      "expo-web-browser",
       "@react-native-firebase/app",
-      "@react-native-firebase/auth"
+      "@react-native-firebase/messaging"
     ],
     "extra": {
-      "siteUrl": "https://kingsagent.gildsociety.com/me/login",
+      "apiUrl": "https://kcagent.up.railway.app/api",
       "eas": {
         "projectId": "39e34497-8899-410f-9745-e2cf912c6ccb"
       }
     },
-    "owner": "king_kuz"
+    "owner": "king_kuz",
+    "scheme": "kingsagent"
   }
 }
