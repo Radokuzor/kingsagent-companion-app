@@ -125,7 +125,7 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
         />
 
         <Text style={styles.small}>
-          KingsChat's own sign-in screen opens in your browser. We never see your password.
+          KingsChat&apos;s own sign-in screen opens in your browser. We never see your password.
         </Text>
       </Card>
     </ScrollView>

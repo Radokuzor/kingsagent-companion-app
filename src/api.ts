@@ -170,8 +170,21 @@ export interface ServerReminder {
   sent: boolean;
 }
 
-export async function fetchReminders(): Promise<ServerReminder[]> {
-  const d = await call('/agent-connect/reminders', { method: 'GET' });
+/**
+ * `includeSent` asks the server for the FULL list — sent reminders too, not
+ * only outstanding ones. `sync.ts` needs both: a reminder that's sent means
+ * "delivered, end its alarm"; a reminder that's simply absent from this full
+ * list means "deleted, end its alarm" — two different, both legitimate,
+ * server-affirmed reasons to cancel. Filtered to outstanding-only (the
+ * default, `includeSent: false`), "delivered" and "deleted" arrive as the
+ * same thing — nothing — which is what let a sync cancel the alarm still
+ * holding a reminder the server simply hadn't marked sent yet.
+ */
+export async function fetchReminders({ includeSent = false }: { includeSent?: boolean } = {}): Promise<
+  ServerReminder[]
+> {
+  const qs = includeSent ? '?include_sent=1' : '';
+  const d = await call(`/agent-connect/reminders${qs}`, { method: 'GET' });
   return Array.isArray(d.reminders) ? d.reminders : [];
 }
 

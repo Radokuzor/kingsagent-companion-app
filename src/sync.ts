@@ -50,7 +50,14 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
 
   let reminders: ServerReminder[];
   try {
-    reminders = await fetchReminders();
+    // The FULL list — sent rows too. See fetchReminders' own comment: a sync
+    // needs to tell "delivered" (sent:true, present) apart from "deleted"
+    // (absent from this now-complete list). Filtered to outstanding-only,
+    // both arrive as the same "missing", and a sync used to cancel the
+    // alarm still holding a reminder the server simply hadn't marked sent
+    // yet — cancellation must come from an affirmative server statement,
+    // never from omission.
+    reminders = await fetchReminders({ includeSent: true });
   } catch (e) {
     // Offline, or the session ended. Neither is fatal: whatever is already
     // armed on this phone stays armed and still rings.
@@ -62,16 +69,43 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
   const armedServerIds = new Set(armedNow.filter((a) => isServerAlarm(a.id)).map((a) => a.id));
 
   const wanted = new Map<string, ServerReminder>();
+  // Alarms the server has explicitly told us are done — the one thing besides
+  // true absence (below) that may end an alarm.
+  const explicitlyDone = new Set<string>();
+
   for (const r of reminders) {
-    if (r.sent) continue;
-    // A one-shot whose moment has passed is not armed. Arming it would make
-    // AlarmManager fire immediately, which is a reminder ringing late and
-    // wrong rather than not at all.
+    const alarmId = alarmIdFor(r.id);
+    if (r.sent) {
+      explicitlyDone.add(alarmId);
+      continue;
+    }
+    // A one-shot whose moment has passed but isn't marked sent YET (the
+    // server's own tick runs on its own cadence and may not have caught up)
+    // is left exactly as it is: not armed fresh — that would make
+    // AlarmManager fire it immediately, a reminder ringing late and wrong
+    // rather than not at all — and not cancelled either, since this is
+    // precisely the state a just-fired alarm's own resume-triggered sync can
+    // observe mid-flight. A later sync sees the explicit sent:true above and
+    // cleans it up then.
     if (r.repeat === 'none' && r.due_at <= Date.now()) continue;
-    wanted.set(alarmIdFor(r.id), r);
+    // A REPEATING reminder with a stale due_at is safe to arm as-is and does
+    // NOT need rolling forward here first: armNative's underlying bridge
+    // (AlarmModule.schedule -> AlarmScheduler.schedule, native-patches/alarm/
+    // AlarmScheduler.kt) already computes the next occurrence from the
+    // device's current time for any repeat other than "none", using only the
+    // hour/minute/weekday extracted from `at` by nativeAlarm.ts's toPayload —
+    // never the date portion. Any future instant sharing that same
+    // time-of-day yields an identical extracted triple, so pre-rolling here
+    // would send Kotlin the exact same hour/minute/weekday it already derives
+    // itself: a no-op that only risks drifting out of sync with that native
+    // algorithm if this file's copy of the maths and the Kotlin's ever
+    // diverge. If nativeAlarm.ts's extraction or AlarmScheduler.kt's
+    // recomputation ever changes to depend on the date part of `at`, this
+    // comment (and this invariant) must be revisited.
+    wanted.set(alarmId, r);
   }
 
-  // ── arm what is new ──
+  // ── arm what is new, keep what's already armed ──
   for (const [alarmId, r] of wanted) {
     if (armedServerIds.has(alarmId)) {
       result.kept += 1;
@@ -96,9 +130,17 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
     }
   }
 
-  // ── cancel what the server no longer has ──
+  // ── cancel ONLY on an affirmative server statement ──
+  // Either this reminder is present and explicitly sent (delivered), or it
+  // is genuinely absent from this now-complete list (deleted — the DM
+  // "cancel my reminder" intent really does remove the Firestore row).
+  // Never on "not currently wanted to (re-)arm", which used to include the
+  // just-fired, not-yet-marked-sent gap handled above.
+  const stillOnServer = new Set(reminders.map((r) => alarmIdFor(r.id)));
   for (const alarmId of armedServerIds) {
     if (wanted.has(alarmId)) continue;
+    const deleted = !stillOnServer.has(alarmId);
+    if (!explicitlyDone.has(alarmId) && !deleted) continue;
     try {
       await cancelNative(alarmId);
       result.cancelled += 1;
