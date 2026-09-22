@@ -1,25 +1,47 @@
 {
   "expo": {
-    "name": "companion-app",
-    "slug": "companion-app",
+    "name": "Kings Agent",
+    "slug": "kings-agent",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kingschat.kingsagent"
     },
     "android": {
+      "package": "com.kingschat.kingsagent",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "INTERNET",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "USE_EXACT_ALARM",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-notifications",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
+    ],
+    "extra": {
+      "siteUrl": "https://kingsagent.gildsociety.com/me/login",
+      "eas": {
+        "projectId": "39e34497-8899-410f-9745-e2cf912c6ccb"
+      }
+    },
+    "owner": "king_kuz"
   }
 }

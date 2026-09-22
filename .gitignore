@@ -31,7 +31,10 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
+google-services.json
 
 # typescript
 *.tsbuildinfo
@@ -39,3 +42,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# signing secrets
+*.keystore
+!debug.keystore
+credentials/

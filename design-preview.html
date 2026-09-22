@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kings Agent companion app - v0 screens</title>
+<style>
+  :root{
+    --bg:#0b0d11; --panel:#161a21; --ink:#e8ecf1; --dim:#9aa5b1; --line:#262c36;
+    --acc:#4da3ff; --green:#37d39b; --warn:#fde68a; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    padding:38px 26px 80px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--dim);font-size:14px;margin:0 0 8px}
+  .honest{background:#1a1508;border:1px solid #4d3f18;color:var(--warn);
+    border-radius:8px;padding:11px 14px;font-size:13.5px;margin:18px 0 30px}
+  h2{font-size:16px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);
+    margin:0 0 14px;font-weight:600}
+  .row{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:302px;background:#000;border:9px solid #22272f;border-radius:26px;
+    padding:0;overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.55)}
+  .notch{height:20px;background:#000;display:flex;align-items:center;justify-content:center}
+  .notch i{width:78px;height:5px;border-radius:99px;background:#2a2f38;display:block}
+  .screen{background:#0f1115;height:560px;display:flex;flex-direction:column;padding-top:14px}
+  .bodyarea{flex:1;overflow:hidden}
+  .pad{padding:16px}
+  .h1{color:#fff;font-size:19px;font-weight:700;margin:0 0 6px}
+  .d{color:var(--dim);font-size:13px;line-height:1.5;margin:0 0 12px}
+  .note{color:var(--warn);background:#2a2415;border:1px solid #4d3f18;border-radius:8px;
+    padding:9px 11px;font-size:12px;line-height:1.45;margin-bottom:12px}
+  .btn{background:#1f6feb;border-radius:8px;padding:11px;text-align:center;
+    color:#fff;font-size:14px;font-weight:600;margin:12px 0 6px}
+  .link{color:var(--acc);font-size:12.5px;padding:5px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:12px;margin-bottom:10px}
+  .ct{color:#fff;font-size:15px;font-weight:600}
+  .rm{color:var(--bad);font-size:12px}
+  .between{display:flex;justify-content:space-between;align-items:center}
+  .tiny{color:#6b7280;font-size:10.5px;margin-top:7px;line-height:1.5}
+  .input{background:#12161d;border:1px solid var(--line);border-radius:8px;
+    padding:9px 11px;color:var(--ink);font-size:12px;margin-bottom:2px}
+  .mono{font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe6ff;
+    min-height:150px;white-space:pre-wrap}
+  .label{color:var(--dim);font-size:11px;margin:11px 0 4px}
+  .tabs{border-top:1px solid var(--line);background:#12161d;display:flex;padding:8px 0 14px}
+  .tab{flex:1;text-align:center;font-size:12.5px;font-weight:600;color:#6b7280}
+  .tab.on{color:var(--acc)}
+  .webview{height:100%;background:#0f1115;display:flex;flex-direction:column}
+  .urlbar{background:#1b212b;border-bottom:1px solid var(--line);padding:8px 12px;
+    font-size:10.5px;color:var(--dim);display:flex;gap:7px;align-items:center}
+  .lock{color:var(--green)}
+  .sitebox{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:22px}
+  .sitebox p{color:#6b7280;font-size:12.5px;line-height:1.6;margin:0}
+  .cap{width:302px}
+  .cap b{display:block;color:#fff;font-size:14.5px;margin-bottom:4px}
+  .cap span{color:var(--dim);font-size:12.5px;line-height:1.55}
+  h3{color:#fff;font-size:14.5px;margin:34px 0 10px}
+  pre{background:#12161d;border:1px solid var(--line);border-radius:8px;padding:15px 17px;
+    overflow:auto;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe6ff}
+  .flow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:10px 13px;font-size:12.5px;color:#dbe6f2}
+  .arrow{color:var(--acc);font-size:16px}
+  .legend{color:var(--dim);font-size:12.5px;margin-top:10px}
+  code{background:#1d232c;border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+    font-size:12px;color:#cfe6ff}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#1b212b;color:#fff}
+  tr:nth-child(even) td{background:#141820}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>Kings Agent companion app &nbsp;v0</h1>
+<p class="sub">Built 22 September 2026, 02:55 to 02:58, from <code>companion-app/App.tsx</code>.
+This is a drawing of the coded layouts so you can see them without a phone.</p>
+<div class="honest"><b>Be clear about what this is.</b> These are the real layouts as coded, drawn in HTML.
+No phone has run this app yet, so an alarm has never actually rung. The one unproven step is the Expo Go
+QR scan and the airplane-mode ring. That needs your phone in your hand.</div>
+
+<h2>Screen 1 of 3 &nbsp;App tab &nbsp;(the site, as an app)</h2>
+<div class="row">
+  <div class="phone">
+    <div class="notch"><i></i></div>
+    <div class="screen">
+      <div class="bodyarea">
+        <div class="webview">
+          <div class="urlbar"><span class="lock">&#128274;</span> kingsagent.gildsociety.com/me/login</div>
+          <div class="sitebox">
+            <p>Your live site renders here.<br><br>
+            The WebView loads <code>kingsagent.gildsociety.com/me/login</code> exactly as a browser would,
+            cookies and all, so the app starts as the thing people already know.<br><br>
+            Wrong page? It is a Settings field, not a rebuild.</p>
+          </div>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab on">App</div><div class="tab">Alarms</div><div class="tab">Arm</div>
+      </div>
+    </div>
+  </div>
+  <div class="cap">
+    <b>What it does</b>
+    <span>Shows the site people already use, full screen, with working Android back button and
+    link handling. The start URL is stored on the device and editable at runtime, so if
+    "checking in" turns out to be a different page, you change it in Settings and never touch the code.</span>
+  </div>
+</div>
+
+<h2>Screen 2 of 3 &nbsp;Alarms tab &nbsp;(what is armed on this phone)</h2>
+<div class="row">
+  <div class="phone">
+    <div class="notch"><i></i></div>
+    <div class="screen">
+      <div class="bodyarea"><div class="pad">
+        <p class="h1">Armed on this phone</p>
+        <p class="d">These fire from the device itself, so they ring with no internet and with our server down.</p>
+        <div class="note">Notifications allowed.</div>
+        <div class="btn">Test alarm in 20 seconds</div>
+        <div class="card">
+          <div class="between"><span class="ct">Workout</span><span class="rm">Remove</span></div>
+          <p class="d" style="margin:6px 0 0">Mon 22 Sep, 02:00 PM &middot; weekdays</p>
+          <p style="color:#cbd5e1;font-size:13px;margin:6px 0 0">Legs day. 45 minutes.</p>
+          <p class="tiny">weekdays &middot; paste &middot; id rem_20260922_1400</p>
+        </div>
+        <div class="card">
+          <div class="between"><span class="ct">Kings Agent test alarm</span><span class="rm">Remove</span></div>
+          <p class="d" style="margin:6px 0 0">Tue 22 Sep, 02:41 PM</p>
+          <p class="tiny">test &middot; id test-1758512345678</p>
+        </div>
+      </div></div>
+      <div class="tabs"><div class="tab">App</div><div class="tab on">Alarms</div><div class="tab">Arm</div></div>
+    </div>
+  </div>
+  <div class="cap">
+    <b>Why this is the whole product</b>
+    <span>The alarm is registered inside the device at the moment the instruction arrives. FCM is best
+    effort: Doze delays it, airplane mode drops it. So the design is never "server pushes, phone rings",
+    it is "agent decides, phone owns the alarm". That is the one thing KingsChat can never give you,
+    which is why the app exists at all.</span>
+  </div>
+</div>
+
+<h2>Screen 3 of 3 &nbsp;Arm tab &nbsp;(paste what the agent sent)</h2>
+<div class="row">
+  <div class="phone">
+    <div class="notch"><i></i></div>
+    <div class="screen">
+      <div class="bodyarea"><div class="pad">
+        <p class="h1">Arm from KingsChat</p>
+        <p class="d">Paste the instruction the agent sent you. That is the whole product: the agent
+        decides, this phone executes.</p>
+        <div class="input mono">{
+  "instructions": [
+    {
+      "id": "rem_20260922_1400",
+      "type": "reminder",
+      "title": "Workout",
+      "body": "Legs day. 45 minutes.",
+      "at": "2026-09-22T14:00:00+01:00",
+      "repeat": "weekdays",
+      "data": { "from": "kingschat" }
+    }
+  ]
+}</div>
+        <div class="btn">Arm it</div>
+        <div class="link">Fill a sample instruction</div>
+        <p class="tiny">Fields: id, type (reminder|task|command), title, body, at (ISO 8601 with offset),
+        repeat (none|daily|weekdays|weekly), data.</p>
+      </div></div>
+      <div class="tabs"><div class="tab">App</div><div class="tab">Alarms</div><div class="tab on">Arm</div></div>
+    </div>
+  </div>
+  <div class="cap">
+    <b>Why paste, not push, for today</b>
+    <span>Zero backend, zero OAuth, zero FCM. It proves the hard part (does an alarm ring on time,
+    offline, with the phone locked) inside your two hours. Same <code>id</code> twice arms once, so a
+    duplicate DM cannot double-book. There is already an optional feed URL the app can poll every 60
+    seconds for when you want the paste step gone.</span>
+  </div>
+</div>
+
+<h3>The instruction envelope, which is the only contract between agent and app</h3>
+<pre>{
+  "instructions": [
+    {
+      "id": "rem_20260922_1400",        // same id twice = armed once (idempotent)
+      "type": "reminder",                // reminder | task | command
+      "title": "Workout",
+      "body": "Legs day. 45 minutes.",
+      "at": "2026-09-22T14:00:00+01:00", // ISO 8601 WITH offset. +01:00 is Lagos.
+      "repeat": "weekdays",              // none | daily | weekdays | weekly
+      "data": { "from": "kingschat" }    // free-form, passed to the notification
+    }
+  ]
+}</pre>
+
+<h3>What happens, end to end</h3>
+<div class="flow">
+  <div class="step">You tell the agent on KingsChat<br>"remind me to work out at 2pm weekdays"</div>
+  <span class="arrow">&rarr;</span>
+  <div class="step">Agent writes the JSON<br>and DMs it to you</div>
+  <span class="arrow">&rarr;</span>
+  <div class="step">You paste into Arm<br>the app validates it</div>
+  <span class="arrow">&rarr;</span>
+  <div class="step">Local alarm armed<br>on the device</div>
+  <span class="arrow">&rarr;</span>
+  <div class="step">2:00 PM, phone locked,<br>airplane mode: it rings</div>
+</div>
+<p class="legend">Two of those five steps exist today and are typechecked and bundled for Android.
+Steps 4 and 5 need your phone. Step 2 is about thirty minutes of my work if you want it.</p>
+
+<h3>Verified, and not verified</h3>
+<table>
+  <tr><th>Claim</th><th>State</th></tr>
+  <tr><td>TypeScript compiles, <code>npx tsc --noEmit</code></td><td>Verified, exit 0</td></tr>
+  <tr><td>Bundles for Android (656 modules, 1.6 MB Hermes bytecode)</td><td>Verified</td></tr>
+  <tr><td>Runs on a physical phone via Expo Go</td><td><b>Not run yet</b></td></tr>
+  <tr><td>An alarm actually rings locked and offline</td><td><b>Not run yet, this is the risk</b></td></tr>
+  <tr><td>Agent sends the envelope automatically</td><td>Not built yet, about 30 min</td></tr>
+</table>
+
+<h3>The one route that cannot work on this Mac</h3>
+<p class="sub">No working JDK, no Android Studio, no Android SDK. So a local Gradle build is impossible,
+and so is <code>npm run android</code>. The working routes are Expo Go on the phone over Wi-Fi
+(no toolchain, running in about 20 minutes) and <code>eas build -p android</code> for a real installable
+APK in the cloud later.</p>
+
+</div></body>
+</html>

@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// ============================================================================
+// Kings Agent — Firestore security rules
+//
+// The whole model in one sentence: a signed-in user can only reach the
+// documents under THEIR OWN kcId, because that kcId is set as their Firebase
+// uid at sign-in.
+//
+// Deliberately simple. Path scoping is the security boundary; adding a
+// "document must carry kcId" check on top buys nothing (a stray field inside
+// your own path harms nobody) and would break any writer that does not set it.
+//
+// Who bypasses these rules entirely: the Admin SDK. The sync worker runs with
+// a service account, so it can write users/{kcId}/** for the agent without
+// being affected by this file. Rules only constrain the apps.
+//
+// Deploy: Firebase console -> Firestore Database -> Rules -> paste -> Publish.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The signed-in user's kcId, which is also their Firebase uid.
+    function isMe(kcId) {
+      return signedIn() && request.auth.uid == kcId;
+    }
+
+    // A person's space: profile, sessions, messages, notes, reminders, devices.
+    match /users/{kcId} {
+      allow read, write: if isMe(kcId);
+    }
+
+    match /users/{kcId}/{document=**} {
+      allow read, write: if isMe(kcId);
+    }
+
+    // Short links for evidence (boarding passes, order confirmations). Readable
+    // by anyone holding the code, writable only by the operator.
+    match /links/{code} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Explicit catch-all. Anything not matched above is denied, so a new
+    // collection added by mistake is closed rather than open.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
