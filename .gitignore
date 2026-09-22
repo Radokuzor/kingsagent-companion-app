@@ -1,0 +1,5 @@
+# This branch holds the built APK and nothing else.
+*
+!.gitignore
+!README.md
+!kings-agent.apk
