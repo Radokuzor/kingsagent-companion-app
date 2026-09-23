@@ -32,29 +32,35 @@ network, with the app closed, and after a reboot.
 
 ## What this build is
 
-- Package `com.kingschat.kingsagent`, version **1.2.3** (versionCode 7),
+- Package `com.kingschat.kingsagent`, version **1.2.4** (versionCode 8),
   release build.
 - Signed with the Kings Agent release key
   (`SHA-1 C8:10:B5:C3:F5:EF:BA:8E:85:64:1F:DD:5C:1B:94:8A:17:EE:3B:A7`).
   A later version installs over this one only if it carries the same key.
 - Firebase project `kings-agent`, so push nudges work.
 
-## New in 1.2.3
+## New in 1.2.4
 
-**An alarm that fails to arm now says so.** If Android has taken exact-alarm
-access away — revoked in Settings, or withdrawn by a battery optimiser — the
-phone used to fail quietly and the server went on believing the alarm was
-set, so no KingsChat message was sent either. Nothing was delivered at all.
-The phone now reports the failure, the reminder falls back to arriving as a
-DM, and the agent can tell you in chat that the alarm did not go on.
+**Your pictures and clips show up.** The agent has been saving them all
+along — ask it for an image, or send it a photo, and it files one away — but
+this app only ever recognised a picture, never a clip, and it worked that out
+partly from the file extension. Media saved by the agent has no extension to
+read: the link is a short `/l/<code>` redirect, and the title is a name
+("Holographic Objects"), not a filename. So a video sat under **Documents**,
+and tapping one opened a blank image viewer instead of playing it. Both now
+go by what the item actually is. Videos open in your own player; pictures
+open in the viewer as before.
 
-**A repeating reminder survives being dismissed.** Dismissing a daily alarm
-used to end the whole series — it never rang again. It now rolls forward to
-its next occurrence. Only cancelling it ends it.
+**A photo or clip you send the agent is now kept.** Sending one used to do
+nothing at all — no reply, and nothing saved, so you could not ask for it
+again later. It is now saved to your media the moment it arrives, with a
+short link back to it, alongside anything the agent made for you. This half
+is a backend change: it is live already, and works with this build and the
+last one.
 
-A one-shot whose moment has already passed is reported as expired rather than
-rung late, and the earlier 1.2.x work is included: the Home section, the
-single Alarms list, and sign-in that stays inside the app.
+The earlier 1.2.x work is included: a failed alarm reports itself, repeating
+reminders survive being dismissed, the Home section, the single Alarms list,
+and sign-in that stays inside the app.
 
 ## If sign-in fails
 
