@@ -13,7 +13,25 @@ with the app closed, after a reboot. That is the one thing a chat bot
 fundamentally cannot do, and it is the entire reason this app exists.
 
 It is a **native client of the Kings Agent backend**, not a browser for the
-website. Two screens: Alarms and Settings, behind a KingsChat sign-in.
+website. Three tabs behind a KingsChat sign-in: **Home**, **Alarms**,
+**Settings**.
+
+- **Home** is the person's own space, read from
+  `GET /api/agent-connect/my-data?messages=0`: their profile, and a nav list
+  into their documents, media, contacts, notes & to-dos and scheduled sends —
+  everything the website's `/me` page shows. Contacts can be added here, with
+  the KingsChat handle looked up as it is typed, and the same hard rule the
+  backend enforces everywhere else: a name **and** a handle, or no save.
+  The **chat history is deliberately not mirrored** — the conversation lives in
+  KingsChat, where they had it, and a second copy of it here would earn
+  nothing.
+- **Alarms** is one list of what is armed on this phone. There is no
+  "from your agent" / "your own" split: an alarm rings the same way and is
+  removed the same way whichever end set it, and the only code that still cares
+  is `remove`, which cancels a server reminder on the server too. Setting one
+  is behind the **+** button, so the screen shows alarms and nothing else.
+- **Settings** is the account, the four Android gates, push status, the test
+  alarm (it belongs beside the permissions it exists to prove) and sign out.
 
 ## The one design rule
 
@@ -80,10 +98,16 @@ FCM needs a real `google-services.json` — see `PLACEHOLDER-google-services.md`
 
 | File | Role |
 |---|---|
-| `App.tsx` | Boot, session, the Alarms/Settings tabs, and the sync triggers (launch, resume, push). |
+| `App.tsx` | Boot, session, the Home/Alarms/Settings tabs (Home owns a small sub-route stack the hardware back button pops), and the sync triggers (launch, resume, push). |
 | `src/SignInScreen.tsx` | The Custom Tab pairing flow. |
-| `src/AlarmsScreen.tsx` | Agent alarms and the person's own, add/remove, test alarm. |
-| `src/SettingsScreen.tsx` | Account, the four Android alarm gates, push status, sign out. |
+| `src/HomeScreen.tsx` | The personal space: profile header, nav list, and the `my-data` fetch its sub-screens are fed from. |
+| `src/DocumentsScreen.tsx` | Research, reports and received files. Every document is a hosted link, so it opens externally. |
+| `src/MediaScreen.tsx` | Pictures and video, as a grid. Thumbnails load from the short link, which signs a fresh URL per hit — nothing caches a resolved address. |
+| `src/ContactsScreen.tsx` | The address book, and the add form: handle lookup, name, how to address them, how you talk to them. |
+| `src/ListsScreen.tsx` | Notes and to-dos, read-only — they are written by talking to the agent. |
+| `src/ScheduledScreen.tsx` | Queued sends. `needs_action` means the agent is waiting on a reply in the DM. |
+| `src/AlarmsScreen.tsx` | One list of armed alarms, add via the + sheet, remove. |
+| `src/SettingsScreen.tsx` | Account, the four Android alarm gates, the test alarm, push status, sign out. |
 | `src/session.ts` | The session, in **expo-secure-store** — never AsyncStorage. |
 | `src/api.ts` | The one backend client. One silent refresh on a 401, then re-consent. |
 | `src/sync.ts` | `syncReminders` — the reconcile. Idempotent by reminder id. |
@@ -91,7 +115,8 @@ FCM needs a real `google-services.json` — see `PLACEHOLDER-google-services.md`
 | `src/nativeAlarm.ts` | JS bridge to the Kotlin alarm. **Do not rewrite.** |
 | `src/instructions.ts` | The agent instruction envelope, parser and validator. |
 | `src/store.ts` | Device id and last-sync time. Nothing secret. |
-| `src/theme.ts`, `src/ui.tsx` | Colour tokens and the shared UI pieces. |
+| `src/theme.ts`, `src/ui.tsx` | Colour tokens and the shared UI pieces, including `Glyph` — every icon is drawn from plain Views, because an icon package would mean an `expo prebuild` and prebuild deletes the alarm patches. |
+| `src/format.ts` | Dates as a person reads them, in one place. |
 | `native-patches/` | Every hand-written native file, plus the restore checklist. |
 
 ## Definition of done for any change

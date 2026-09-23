@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 
 import AlarmsScreen from './src/AlarmsScreen';
+import HomeScreen, { type HomeRoute } from './src/HomeScreen';
 import SettingsScreen from './src/SettingsScreen';
 import SignInScreen from './src/SignInScreen';
 import { registerDevice, unregisterDevice } from './src/api';
@@ -22,16 +23,19 @@ import { clearSession, loadSession, type Session } from './src/session';
 import { deviceId as loadDeviceId, lastSyncAt, markSynced } from './src/store';
 import { isServerAlarm, syncReminders } from './src/sync';
 import { C, S } from './src/theme';
+import { Glyph, type GlyphName } from './src/ui';
 
 /**
  * Kings Agent companion — a native client of the Kings Agent backend.
  *
  * Two jobs, and the order matters: it is the **execution surface** for the
  * agent (a reminder set in a KingsChat DM rings here like an alarm clock,
- * offline, with the app closed), and it shows the person their own alarms
- * natively. It is not a browser for the website — the WebView, the kcId
+ * offline, with the app closed), and it is the person's own space — their
+ * profile, documents, media, contacts, notes and queued sends, read from the
+ * backend API. It is not a browser for the website — the WebView, the kcId
  * scraper and the paste-an-instruction tab are gone, and per the architecture
- * brief they do not come back.
+ * brief they do not come back. Nor is the chat history here: the conversation
+ * lives in KingsChat, where they had it.
  *
  * Sync is the heartbeat. `syncReminders` runs at launch, on resume, and on a
  * push nudge; once it has run, every alarm it armed is held by Android's own
@@ -48,7 +52,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-type Tab = 'alarms' | 'settings';
+type Tab = 'home' | 'alarms' | 'settings';
 
 const APP_VERSION = String(Constants.expoConfig?.version ?? '1.0.0');
 
@@ -65,7 +69,11 @@ function KingsAgentApp() {
   const [booted, setBooted] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [deviceId, setDeviceId] = useState('');
-  const [tab, setTab] = useState<Tab>('alarms');
+  const [tab, setTab] = useState<Tab>('home');
+  // The Home tab's own little stack. It lives up here so the hardware back
+  // button can pop it, which is what Android users expect of a screen they
+  // pushed into.
+  const [homeRoute, setHomeRoute] = useState<HomeRoute>('home');
   const [alarms, setAlarms] = useState<NativeAlarmRecord[]>([]);
   const [access, setAccess] = useState<AlarmAccess | null>(null);
   const [pushReady, setPushReady] = useState(false);
@@ -178,17 +186,21 @@ function KingsAgentApp() {
     return () => sub.remove();
   }, [refreshLocal, sync]);
 
-  // Back on Settings returns to Alarms rather than leaving the app.
+  // Back unwinds one step at a time — a sub-screen, then the tab, then out.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (tab !== 'alarms') {
-        setTab('alarms');
+      if (tab === 'home' && homeRoute !== 'home') {
+        setHomeRoute('home');
+        return true;
+      }
+      if (tab !== 'home') {
+        setTab('home');
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [tab]);
+  }, [tab, homeRoute]);
 
   const onSignedIn = useCallback(
     async (next: Session) => {
@@ -212,7 +224,8 @@ function KingsAgentApp() {
     sessionRef.current = null;
     setPushReady(false);
     setSyncNote('');
-    setTab('alarms');
+    setTab('home');
+    setHomeRoute('home');
     await refreshLocal();
   }, [refreshLocal]);
 
@@ -238,7 +251,14 @@ function KingsAgentApp() {
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
       <View style={styles.body}>
-        {tab === 'alarms' ? (
+        {tab === 'home' ? (
+          <HomeScreen
+            session={session}
+            route={homeRoute}
+            onNavigate={setHomeRoute}
+            onOpenAlarms={() => setTab('alarms')}
+          />
+        ) : tab === 'alarms' ? (
           <AlarmsScreen
             alarms={alarms}
             deviceId={deviceId}
@@ -259,18 +279,39 @@ function KingsAgentApp() {
       </View>
 
       <View style={[styles.tabs, { paddingBottom: Math.max(insets.bottom, S.sm) }]}>
-        <TabButton label="Alarms" on={tab === 'alarms'} onPress={() => setTab('alarms')} />
-        <TabButton label="Settings" on={tab === 'settings'} onPress={() => setTab('settings')} />
+        <TabButton
+          label="Home"
+          icon="grid"
+          on={tab === 'home'}
+          onPress={() => {
+            // Tapping the tab you are already on goes back to its root, the
+            // way every other Android app behaves.
+            if (tab === 'home') setHomeRoute('home');
+            setTab('home');
+          }}
+        />
+        <TabButton label="Alarms" icon="bell" on={tab === 'alarms'} onPress={() => setTab('alarms')} />
+        <TabButton label="Settings" icon="cog" on={tab === 'settings'} onPress={() => setTab('settings')} />
       </View>
     </View>
   );
 }
 
-function TabButton({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+function TabButton({
+  label,
+  icon,
+  on,
+  onPress,
+}: {
+  label: string;
+  icon: GlyphName;
+  on: boolean;
+  onPress: () => void;
+}) {
   return (
     <Pressable onPress={onPress} style={styles.tab} hitSlop={6}>
+      <Glyph name={icon} color={on ? C.accent : C.faint} size={19} />
       <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
-      <View style={[styles.tabBar, on && styles.tabBarOn]} />
     </Pressable>
   );
 }
@@ -298,9 +339,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.bgDeep,
     paddingTop: S.sm,
   },
-  tab: { flex: 1, alignItems: 'center', gap: 6 },
-  tabText: { color: C.faint, fontSize: 13, fontWeight: '600' },
+  tab: { flex: 1, alignItems: 'center', gap: 5 },
+  tabText: { color: C.faint, fontSize: 12, fontWeight: '600' },
   tabTextOn: { color: C.text },
-  tabBar: { height: 2, width: 26, borderRadius: 2, backgroundColor: 'transparent' },
-  tabBarOn: { backgroundColor: C.accent },
 });

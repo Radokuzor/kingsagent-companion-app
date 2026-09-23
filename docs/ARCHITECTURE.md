@@ -7,9 +7,12 @@ drifting between two repos:
 - `docs/architecture/companion-app-architecture-brief.md` — how this app and the
   backend/website fit together. **Phase 1 of its §9 build order is now done**
   (native KingsChat sign-in, device registration, FCM, reminder sync and
-  write-back, and the deletion of the WebView / paste tab / kcId display).
-  Phases 2 and 3 — the personal space and the assistant conversation as native
-  screens — are not started.
+  write-back, and the deletion of the WebView / paste tab / kcId display), and
+  **Phase 2 — the personal space — is done as the Home tab** (profile,
+  documents, media, contacts, notes & to-dos, scheduled sends, from
+  `my-data?messages=0`). Phase 3, the assistant conversation as a native
+  screen, is not started and is not simply "show the transcript": the chat
+  history is deliberately left out of the Home tab.
 - `docs/architecture/kingsagent-spaces-build.md` — the larger per-user "Bot
   Spaces" vision this app is one piece of.
 

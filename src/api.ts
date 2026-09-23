@@ -208,4 +208,128 @@ export async function patchReminder(
   });
 }
 
+// ─── personal space (the Home section) ─────────────────────────────────
+// Everything the website's /me page shows, minus the transcript: the app
+// asks for `messages=0` because it deliberately does not display the chat
+// history, and 200 messages it will never render is the heaviest part of
+// this response.
+
+export interface MyProfile {
+  display_name?: string | null;
+  org?: string | null;
+  role_title?: string | null;
+  timezone?: string | null;
+  gender?: string | null;
+  prefs?: string | null;
+}
+
+export interface MyContact {
+  id: string;
+  name: string;
+  kc_handle?: string | null;
+  kc_id?: string | null;
+  style_sample?: string | null;
+  gender?: string | null;
+  note?: string | null;
+}
+
+export interface MyDocument {
+  id: string;
+  title: string;
+  kind: string;
+  body?: string;
+  sources?: string[];
+  pdf_url?: string | null;
+  file_url?: string | null;
+  created_at?: number | null;
+}
+
+export interface MyNote {
+  id: string;
+  text: string;
+  created_at?: number | null;
+}
+
+export interface MyTodo {
+  id: string;
+  text: string;
+  done?: boolean;
+  created_at?: number | null;
+}
+
+export interface MyScheduledSend {
+  id: string;
+  title?: string | null;
+  send_at?: number | null;
+  status?: string | null;
+  contact_name?: string | null;
+}
+
+export interface MyData {
+  profile: MyProfile | null;
+  notes: MyNote[];
+  todos: MyTodo[];
+  contacts: MyContact[];
+  reminders: ServerReminder[];
+  scheduledSends: MyScheduledSend[];
+  documents: MyDocument[];
+}
+
+export async function fetchMyData(): Promise<MyData> {
+  const d = await call('/agent-connect/my-data?messages=0', { method: 'GET' });
+  return {
+    profile: d.profile ?? null,
+    notes: Array.isArray(d.notes) ? d.notes : [],
+    todos: Array.isArray(d.todos) ? d.todos : [],
+    contacts: Array.isArray(d.contacts) ? d.contacts : [],
+    reminders: Array.isArray(d.reminders) ? d.reminders : [],
+    scheduledSends: Array.isArray(d.scheduledSends) ? d.scheduledSends : [],
+    documents: Array.isArray(d.documents) ? d.documents : [],
+  };
+}
+
+export interface NewContact {
+  name: string;
+  kc_handle: string;
+  kc_id?: string;
+  gender?: 'male' | 'female';
+  style_sample?: string;
+}
+
+/**
+ * The same write the bot makes for "add contact" in a DM, and the same rule:
+ * a name and a KingsChat handle are both mandatory. A contact with no handle
+ * cannot be messaged, so it is a bug rather than a valid save.
+ */
+export async function addContact(contact: NewContact): Promise<MyContact> {
+  const d = await call('/agent-connect/contacts', {
+    method: 'POST',
+    body: JSON.stringify(contact),
+  });
+  return d.contact as MyContact;
+}
+
+export interface KcProfile {
+  kcId?: string | null;
+  username?: string | null;
+  name?: string | null;
+  avatar?: string | null;
+}
+
+/**
+ * Look a KingsChat handle up before saving it, so a typo is caught here
+ * rather than by a message that silently goes nowhere. Not found is a normal
+ * answer — plenty of people the agent will message have never signed in — so
+ * this resolves to `null` rather than throwing.
+ */
+export async function lookupKcHandle(username: string): Promise<KcProfile | null> {
+  const clean = username.trim().replace(/^@/, '');
+  if (!clean) return null;
+  const d = await call('/auth/kingschat/lookup', {
+    method: 'POST',
+    body: JSON.stringify({ username: clean }),
+  });
+  return d.found && d.profile ? (d.profile as KcProfile) : null;
+}
+
 export { API_BASE };

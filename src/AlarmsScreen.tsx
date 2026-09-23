@@ -1,11 +1,36 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { ensurePermissions, scheduleInstruction, testInstruction, type Instruction, type Repeat } from './instructions';
-import { cancelNative, nativeAlarmAvailable, stopNativeRinging, type NativeAlarmRecord } from './nativeAlarm';
+import { ensurePermissions, scheduleInstruction, type Instruction, type Repeat } from './instructions';
+import { cancelNative, nativeAlarmAvailable, type NativeAlarmRecord } from './nativeAlarm';
 import { cancelServerAlarm, isServerAlarm } from './sync';
-import { Button, Card, Empty, Pill, SectionTitle } from './ui';
+import { Button, Card, Empty, Fab, Pill } from './ui';
 import { C, R, S } from './theme';
+
+/**
+ * One list: every alarm armed on this phone, whichever end set it.
+ *
+ * The split this used to have — "from your agent" above "your own alarms" —
+ * was a distinction the person never has to act on. An alarm rings the same
+ * way and is removed the same way either way; where it came from only matters
+ * to `remove`, which still cancels a server reminder on the server too so the
+ * agent's view and the phone agree. Nothing in the UI repeats that detail.
+ *
+ * Setting one is behind the + button rather than a form that is always on
+ * screen, so what this screen shows is the alarms and nothing else.
+ */
 
 const REPEATS: Repeat[] = ['none', 'daily', 'weekdays', 'weekly'];
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -36,18 +61,104 @@ interface Props {
 }
 
 export default function AlarmsScreen({ alarms, deviceId, syncing, syncNote, onRefresh, onChanged }: Props) {
+  const [adding, setAdding] = useState(false);
+
+  // Soonest first — the only order that answers "what is next?" at a glance.
+  const sorted = useMemo(() => [...alarms].sort((a, b) => a.triggerAt - b.triggerAt), [alarms]);
+
+  const remove = useCallback(
+    async (rec: NativeAlarmRecord) => {
+      // A server reminder is also cancelled on the server, so the agent's view
+      // and the conversation agree with the phone. A local one is ours alone.
+      if (isServerAlarm(rec.id)) await cancelServerAlarm(rec.id, deviceId);
+      else await cancelNative(rec.id);
+      await onChanged();
+    },
+    [deviceId, onChanged],
+  );
+
+  return (
+    <View style={styles.root}>
+      <ScrollView
+        contentContainerStyle={styles.wrap}
+        refreshControl={<RefreshControl refreshing={syncing} onRefresh={onRefresh} tintColor={C.dim} />}
+      >
+        <View style={styles.head}>
+          <Text style={styles.h1}>Alarms</Text>
+          <Pill
+            text={nativeAlarmAvailable ? 'real alarm' : 'notification only'}
+            tone={nativeAlarmAvailable ? 'good' : 'warn'}
+          />
+        </View>
+        {syncNote ? <Text style={styles.syncNote}>{syncNote}</Text> : null}
+
+        <Card style={styles.card}>
+          {sorted.length === 0 ? (
+            <Empty
+              title="No alarms set"
+              body={'Tap + to set one, or ask the agent on KingsChat — "remind me to call Mum at 6pm".'}
+            />
+          ) : (
+            sorted.map((a, i) => (
+              <AlarmRow key={a.id} rec={a} onRemove={remove} last={i === sorted.length - 1} />
+            ))
+          )}
+        </Card>
+
+        <View style={{ height: 96 }} />
+      </ScrollView>
+
+      <Fab label="Add an alarm" onPress={() => setAdding(true)} />
+      <AddAlarm open={adding} onClose={() => setAdding(false)} onChanged={onChanged} />
+    </View>
+  );
+}
+
+function AlarmRow({
+  rec,
+  onRemove,
+  last,
+}: {
+  rec: NativeAlarmRecord;
+  onRemove: (rec: NativeAlarmRecord) => void;
+  last: boolean;
+}) {
+  return (
+    <View style={[styles.row, !last && styles.rowLine]}>
+      <View style={styles.rowMain}>
+        <Text style={styles.rowTime}>{whenLabel(rec)}</Text>
+        <Text style={styles.rowTitle} numberOfLines={2}>
+          {rec.title}
+        </Text>
+        {rec.body ? (
+          <Text style={styles.rowBody} numberOfLines={2}>
+            {rec.body}
+          </Text>
+        ) : null}
+      </View>
+      <Pressable onPress={() => onRemove(rec)} hitSlop={10} style={styles.remove}>
+        <Text style={styles.removeText}>Remove</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function AddAlarm({
+  open,
+  onClose,
+  onChanged,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
   const [hour, setHour] = useState('07');
   const [minute, setMinute] = useState('00');
   const [label, setLabel] = useState('');
   const [repeat, setRepeat] = useState<Repeat>('daily');
   const [busy, setBusy] = useState(false);
 
-  // Separated because they mean different things to the person: one they set,
-  // the other the agent set for them from a KingsChat conversation.
-  const fromAgent = useMemo(() => alarms.filter((a) => isServerAlarm(a.id)), [alarms]);
-  const mine = useMemo(() => alarms.filter((a) => !isServerAlarm(a.id)), [alarms]);
-
-  const addAlarm = useCallback(async () => {
+  const add = useCallback(async () => {
     const h = Number(hour);
     const m = Number(minute);
     if (!Number.isInteger(h) || h < 0 || h > 23 || !Number.isInteger(m) || m < 0 || m > 59) {
@@ -69,186 +180,128 @@ export default function AlarmsScreen({ alarms, deviceId, syncing, syncNote, onRe
       await scheduleInstruction(instr);
       setLabel('');
       await onChanged();
+      onClose();
     } catch (e) {
       Alert.alert("Couldn't set that alarm", (e as Error).message);
     } finally {
       setBusy(false);
     }
-  }, [hour, minute, label, repeat, onChanged]);
-
-  const remove = useCallback(
-    async (rec: NativeAlarmRecord) => {
-      // A server reminder is also cancelled on the server, so the agent's view
-      // and the conversation agree with the phone. A local one is ours alone.
-      if (isServerAlarm(rec.id)) await cancelServerAlarm(rec.id, deviceId);
-      else await cancelNative(rec.id);
-      await onChanged();
-    },
-    [deviceId, onChanged],
-  );
-
-  const test = useCallback(async () => {
-    await ensurePermissions();
-    await scheduleInstruction(testInstruction(20));
-    await onChanged();
-    Alert.alert(
-      'Test alarm set',
-      'Rings in 20 seconds. Lock the phone and let the screen go dark — unlocked, Android shows a notification instead, by design.',
-    );
-  }, [onChanged]);
+  }, [hour, minute, label, repeat, onChanged, onClose]);
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.wrap}
-      refreshControl={<RefreshControl refreshing={syncing} onRefresh={onRefresh} tintColor={C.dim} />}
-    >
-      <View style={styles.head}>
-        <Text style={styles.h1}>Alarms</Text>
-        <Pill
-          text={nativeAlarmAvailable ? 'real alarm' : 'notification only'}
-          tone={nativeAlarmAvailable ? 'good' : 'warn'}
-        />
-      </View>
-      <Text style={styles.syncNote}>{syncNote}</Text>
-
-      <SectionTitle hint="Set by the agent from your KingsChat conversation.">From your agent</SectionTitle>
-      <Card>
-        {fromAgent.length === 0 ? (
-          <Empty
-            title="Nothing from the agent yet"
-            body={'Ask the bot on KingsChat — "remind me to call Mum at 6pm" — and it appears here.'}
-          />
-        ) : (
-          fromAgent.map((a, i) => (
-            <AlarmRow key={a.id} rec={a} onRemove={remove} last={i === fromAgent.length - 1} agent />
-          ))
-        )}
-      </Card>
-
-      <SectionTitle>Your own alarms</SectionTitle>
-      <Card>
-        {mine.length === 0 ? (
-          <Empty title="No alarms set here" body="Add one below." />
-        ) : (
-          mine.map((a, i) => <AlarmRow key={a.id} rec={a} onRemove={remove} last={i === mine.length - 1} />)
-        )}
-      </Card>
-
-      <SectionTitle>Add an alarm</SectionTitle>
-      <Card>
-        <View style={styles.timeRow}>
-          <TextInput
-            style={styles.timeBox}
-            value={hour}
-            onChangeText={setHour}
-            keyboardType="number-pad"
-            maxLength={2}
-            placeholder="07"
-            placeholderTextColor={C.faint}
-          />
-          <Text style={styles.colon}>:</Text>
-          <TextInput
-            style={styles.timeBox}
-            value={minute}
-            onChangeText={setMinute}
-            keyboardType="number-pad"
-            maxLength={2}
-            placeholder="00"
-            placeholderTextColor={C.faint}
-          />
-        </View>
-        <TextInput
-          style={styles.input}
-          value={label}
-          onChangeText={setLabel}
-          placeholder="Label (optional)"
-          placeholderTextColor={C.faint}
-        />
-        <View style={styles.chips}>
-          {REPEATS.map((r) => (
-            <Pressable
-              key={r}
-              onPress={() => setRepeat(r)}
-              style={[styles.chip, repeat === r && styles.chipOn]}
-            >
-              <Text style={[styles.chipText, repeat === r && styles.chipTextOn]}>
-                {r === 'none' ? 'once' : r}
-              </Text>
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.sheetBackdrop}
+      >
+        <View style={styles.sheet}>
+          <View style={styles.sheetHead}>
+            <Text style={styles.sheetTitle}>New alarm</Text>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Text style={styles.sheetClose}>Cancel</Text>
             </Pressable>
-          ))}
+          </View>
+
+          <View style={styles.sheetBody}>
+            <View style={styles.timeRow}>
+              <TextInput
+                style={styles.timeBox}
+                value={hour}
+                onChangeText={setHour}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholder="07"
+                placeholderTextColor={C.faint}
+                selectTextOnFocus
+              />
+              <Text style={styles.colon}>:</Text>
+              <TextInput
+                style={styles.timeBox}
+                value={minute}
+                onChangeText={setMinute}
+                keyboardType="number-pad"
+                maxLength={2}
+                placeholder="00"
+                placeholderTextColor={C.faint}
+                selectTextOnFocus
+              />
+            </View>
+            <TextInput
+              style={styles.input}
+              value={label}
+              onChangeText={setLabel}
+              placeholder="Label (optional)"
+              placeholderTextColor={C.faint}
+            />
+            <View style={styles.chips}>
+              {REPEATS.map((r) => (
+                <Pressable
+                  key={r}
+                  onPress={() => setRepeat(r)}
+                  style={[styles.chip, repeat === r && styles.chipOn]}
+                >
+                  <Text style={[styles.chipText, repeat === r && styles.chipTextOn]}>
+                    {r === 'none' ? 'once' : r}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Button label="Set alarm" onPress={add} busy={busy} />
+            <View style={{ height: S.lg }} />
+          </View>
         </View>
-        <Button label="Set alarm" onPress={addAlarm} busy={busy} />
-      </Card>
-
-      <SectionTitle>Check it works</SectionTitle>
-      <Card>
-        <Button label="Test alarm in 20 seconds" onPress={test} tone="ghost" />
-        <View style={{ height: S.sm }} />
-        <Button label="Stop ringing" onPress={() => void stopNativeRinging()} tone="ghost" />
-      </Card>
-
-      <View style={{ height: S.xl }} />
-    </ScrollView>
-  );
-}
-
-function AlarmRow({
-  rec,
-  onRemove,
-  last,
-  agent,
-}: {
-  rec: NativeAlarmRecord;
-  onRemove: (rec: NativeAlarmRecord) => void;
-  last: boolean;
-  agent?: boolean;
-}) {
-  return (
-    <View style={[styles.row, !last && styles.rowLine]}>
-      <View style={styles.rowMain}>
-        <Text style={styles.rowTitle} numberOfLines={1}>
-          {rec.title}
-        </Text>
-        <Text style={styles.rowWhen}>{whenLabel(rec)}</Text>
-        {rec.body ? (
-          <Text style={styles.rowBody} numberOfLines={2}>
-            {rec.body}
-          </Text>
-        ) : null}
-      </View>
-      {agent ? <Pill text="agent" tone="good" /> : null}
-      <Pressable onPress={() => onRemove(rec)} hitSlop={10} style={styles.remove}>
-        <Text style={styles.removeText}>Remove</Text>
-      </Pressable>
-    </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.bg },
   wrap: { padding: S.md, paddingTop: S.sm, backgroundColor: C.bg },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   h1: { color: C.text, fontSize: 26, fontWeight: '800' },
   syncNote: { color: C.faint, fontSize: 12, marginTop: 4 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 12 },
+  card: { marginTop: S.md, paddingVertical: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 13 },
   rowLine: { borderBottomWidth: 1, borderBottomColor: C.line },
   rowMain: { flex: 1 },
-  rowTitle: { color: C.text, fontSize: 15, fontWeight: '600' },
-  rowWhen: { color: C.dim, fontSize: 13, marginTop: 2 },
+  rowTime: { color: C.text, fontSize: 17, fontWeight: '700' },
+  rowTitle: { color: C.dim, fontSize: 14, marginTop: 3 },
   rowBody: { color: C.faint, fontSize: 12, marginTop: 3 },
   remove: { paddingHorizontal: 6, paddingVertical: 4 },
   removeText: { color: C.faint, fontSize: 12, fontWeight: '600' },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(3,6,14,0.75)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: C.bg,
+    borderTopLeftRadius: R.lg,
+    borderTopRightRadius: R.lg,
+    borderTopWidth: 1,
+    borderColor: C.line,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S.md,
+    paddingVertical: S.md,
+    borderBottomWidth: 1,
+    borderBottomColor: C.line,
+  },
+  sheetTitle: { color: C.text, fontSize: 17, fontWeight: '700' },
+  sheetClose: { color: C.dim, fontSize: 14, fontWeight: '600' },
+  sheetBody: { padding: S.md },
   timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: S.sm },
   timeBox: {
     backgroundColor: C.cardHi,
     borderRadius: R.md,
     color: C.text,
-    fontSize: 30,
+    fontSize: 34,
     fontWeight: '700',
-    paddingVertical: 10,
-    width: 84,
+    paddingVertical: 12,
+    width: 96,
     textAlign: 'center',
   },
-  colon: { color: C.dim, fontSize: 26, fontWeight: '700' },
+  colon: { color: C.dim, fontSize: 28, fontWeight: '700' },
   input: {
     backgroundColor: C.cardHi,
     borderRadius: R.md,

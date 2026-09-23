@@ -1,12 +1,17 @@
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { openAccessSettings, type AccessTarget, type AlarmAccess } from './nativeAlarm';
+import { ensurePermissions, scheduleInstruction, testInstruction } from './instructions';
+import { openAccessSettings, stopNativeRinging, type AccessTarget, type AlarmAccess } from './nativeAlarm';
 import type { Session } from './session';
 import { Button, Card, Pill, SectionTitle } from './ui';
 import { C, R, S } from './theme';
 
 /**
- * Account, the four Android gates, and sign out. Nothing else.
+ * Account, the four Android gates, the test that proves they took, and sign
+ * out. Nothing else.
+ *
+ * The test alarm lives here rather than on the Alarms screen: it belongs next
+ * to the four permissions it verifies, and the Alarms screen shows alarms.
  *
  * Specifically NOT here, and it must not come back: the kcId, the app's JWT,
  * the KingsChat access token, the FCM token, the device id, the backend URL,
@@ -39,6 +44,18 @@ export default function SettingsScreen({ session, access, pushReady, onSignOut, 
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase() ?? '')
     .join('');
+
+  // Proof, not reassurance: the permissions above are four switches whose
+  // effect nobody can see until something actually rings.
+  const test = async () => {
+    await ensurePermissions();
+    await scheduleInstruction(testInstruction(20));
+    onRecheck();
+    Alert.alert(
+      'Test alarm set',
+      'Rings in 20 seconds. Lock the phone and let the screen go dark — unlocked, Android shows a notification instead, by design.',
+    );
+  };
 
   const fix = async (target: AccessTarget) => {
     const opened = await openAccessSettings(target);
@@ -104,6 +121,10 @@ export default function SettingsScreen({ session, access, pushReady, onSignOut, 
             </Text>
             <View style={{ height: S.sm }} />
             <Button label="Check again" onPress={onRecheck} tone="ghost" />
+            <View style={{ height: S.sm }} />
+            <Button label="Test alarm in 20 seconds" onPress={() => void test()} tone="ghost" />
+            <View style={{ height: S.sm }} />
+            <Button label="Stop ringing" onPress={() => void stopNativeRinging()} tone="ghost" />
           </>
         )}
       </Card>
