@@ -7,7 +7,7 @@ anything we hand-wrote, so it will silently delete all of the following:
 |---|---|
 | `android/app/build.gradle` | release `signingConfig` pointing at our keystore; `androidResources { noCompress 'wav' }`; `apply plugin: 'com.google.gms.google-services'` |
 | `android/build.gradle` | google-services plugin classpath |
-| `android/app/src/main/AndroidManifest.xml` | the five alarm components (AlarmReceiver, AlarmActionReceiver, BootReceiver, AlarmService, AlarmActivity) plus WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, USE_FULL_SCREEN_INTENT |
+| `android/app/src/main/AndroidManifest.xml` | the five alarm components (AlarmReceiver, AlarmActionReceiver, BootReceiver, AlarmService, AlarmActivity) plus WAKE_LOCK, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, USE_FULL_SCREEN_INTENT; also the `kingsagent://` intent-filter on `MainActivity` that lets the KingsChat sign-in Custom Tab hand control back without the person switching apps by hand (see `SignInScreen.tsx`) — losing this one is quieter than losing the alarm, since sign-in still works, it just goes back to asking people to switch back manually |
 | `MainApplication.kt` | `add(com.kingschat.kingsagent.alarm.AlarmPackage())`, without which the JS bridge to the alarm disappears |
 | `android/gradle.properties` | `reactNativeArchitectures=arm64-v8a`, plus the KINGSAGENT_* signing secrets (passwords blanked here, see below) |
 | `alarm/*.kt` | the entire Level 2 alarm implementation |
@@ -65,4 +65,8 @@ unzip -l "$APK" | grep -oE "lib/[^/]+/" | sort -u
 # 6. Firebase values are baked in
 "$BT/aapt2" dump resources "$APK" | grep -c "google_app_id\|project_id\|gcm_defaultSenderId"
 #    expect: 3
+
+# 7. the sign-in redirect scheme survives
+"$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" | grep -c "kingsagent"
+#    expect: at least 1 (the intent-filter's data scheme)
 ```

@@ -12,16 +12,31 @@ import { C, R, S } from './theme';
  *
  * The consent runs in a **Chrome Custom Tab** — KingsChat's own screen, in the
  * system browser, so this app never sees anyone's password and never renders
- * a login form it controls. (The previous build framed the website in a
- * WebView and scraped the session out of it. That is gone and must not come
- * back.)
+ * a login form it controls. That is deliberate, not a compromise waiting to
+ * be tightened: an embedded WebView run by this app's own process CAN read
+ * page content and inject script into it, which is exactly what "we never
+ * see your password" is promising NOT to happen. (The previous build did
+ * frame the website in a WebView and scrape the session out of it. That is
+ * gone and must not come back, for that reason.)
  *
  * The code cannot come back to the phone directly: KingsChat locks a
  * developer project's redirect to the website's /auth/callback and it cannot
  * be repointed at an app. So the backend brokers it — this app creates a
  * pairing, opens the site's /app-login with only the pairing id in the URL,
- * and then polls to claim the session with a secret that never left the
- * device. See backend routes/appAuth.js.
+ * and the website hands the session back over HTTPS once it has one. See
+ * backend routes/appAuth.js.
+ *
+ * The tab closes itself. `openAuthSessionAsync` (not `openBrowserAsync`) also
+ * registers `kingsagent://app-pair-complete` as the one redirect it is
+ * listening for; the website navigates there — carrying only the pairing id,
+ * never the secret — the instant its own exchange finishes
+ * (`app/app-login/page.js`'s `returnToApp`), and the OS hands that straight
+ * back to this activity (the intent-filter in AndroidManifest.xml) without
+ * the person ever having to switch apps by hand. If an older install of this
+ * app never registered that scheme, or the redirect is swallowed for any
+ * other reason, the website's "Go back to the Kings Agent app" message is
+ * still there underneath as the fallback it always was — this only removes
+ * the need for it in the common case.
  *
  * The consent is also the authorisation: KingsChat's developer API refuses to
  * deliver to, or send as, anyone who has not consented to this project. So
@@ -29,8 +44,13 @@ import { C, R, S } from './theme';
  * you are".
  */
 
-const POLL_MS = 2000;
-const GIVE_UP_MS = 5 * 60 * 1000;
+const APP_REDIRECT = 'kingsagent://app-pair-complete';
+// The claim after a successful redirect should succeed on the first try —
+// the website already awaited `app-pair/complete` before it navigated here.
+// A short bounded retry only covers a stray write-propagation hiccup, not a
+// person who is still typing; that case is what the Custom Tab is for.
+const CLAIM_RETRIES = 5;
+const CLAIM_RETRY_MS = 500;
 
 interface Props {
   deviceId: string;
@@ -55,40 +75,41 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
     try {
       const pair = await pairStart(deviceId, appVersion);
 
-      // Not openAuthSessionAsync: that waits for a redirect back to a scheme
-      // this app owns, and there is none — the website finishes the exchange.
-      // So open the tab and poll for the session instead.
-      WebBrowser.openBrowserAsync(pair.consentUrl, {
+      setNote('Waiting for you to finish signing in...');
+      const result = await WebBrowser.openAuthSessionAsync(pair.consentUrl, APP_REDIRECT, {
         showTitle: false,
         enableBarCollapsing: true,
-      }).catch(() => {});
+      });
 
-      setNote('Waiting for you to finish signing in...');
-      const until = Date.now() + GIVE_UP_MS;
+      if (cancelled.current) return;
 
-      while (Date.now() < until) {
+      // The person closed the tab themselves (back button, swipe-away)
+      // before finishing. Not an error — just let them try again.
+      if (result.type !== 'success') {
+        setBusy(false);
+        setNote('');
+        return;
+      }
+
+      setNote('Finishing sign in...');
+      let session: Session | null = null;
+      for (let attempt = 0; attempt < CLAIM_RETRIES; attempt++) {
         if (cancelled.current) return;
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        let session: Session | null = null;
         try {
           session = await pairClaim(pair.pairId, pair.secret);
         } catch (e) {
-          // 202 is handled as null by the client; anything thrown here is a
-          // real failure (expired pairing, bad secret, server down).
           throw e;
         }
-        if (session) {
-          await saveSession(session);
-          try {
-            await WebBrowser.dismissBrowser();
-          } catch {
-            // Already closed by the person, which is fine.
-          }
-          if (!cancelled.current) onSignedIn(session);
-          return;
-        }
+        if (session) break;
+        await new Promise((r) => setTimeout(r, CLAIM_RETRY_MS));
       }
-      setError('That took too long. Tap to try again.');
+
+      if (!session) {
+        setError('Signed in, but the app is still waiting on it. Tap to try again.');
+        return;
+      }
+      await saveSession(session);
+      if (!cancelled.current) onSignedIn(session);
     } catch (e) {
       setError((e as Error).message || 'Sign in failed.');
     } finally {
@@ -125,7 +146,8 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
         />
 
         <Text style={styles.small}>
-          KingsChat&apos;s own sign-in screen opens in your browser. We never see your password.
+          KingsChat&apos;s own sign-in screen opens over this app, then closes itself when you&apos;re done.
+          We never see your password.
         </Text>
       </Card>
     </ScrollView>

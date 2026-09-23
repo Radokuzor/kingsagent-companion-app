@@ -31,6 +31,16 @@
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
+      <!-- Lets the KingsChat sign-in Custom Tab (SignInScreen.tsx, openAuthSessionAsync)
+           hand control straight back to this activity once the website redirects to
+           kingsagent://app-pair-complete, so the tab closes itself instead of leaving
+           the person to switch back to the app by hand. -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="kingsagent"/>
+      </intent-filter>
     </activity>
 
     <!-- ===== Level 2 alarm components ===== -->
