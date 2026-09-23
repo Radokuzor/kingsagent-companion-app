@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Dimensions,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewNavigation } from 'react-native-webview';
 
 import { pairClaim, pairStart } from './api';
@@ -11,13 +22,20 @@ import { C, R, S } from './theme';
  * Signing in, without ever leaving the app.
  *
  * KingsChat's consent screen renders in a WebView **inside** this screen, as
- * a full-screen sheet with its own close button — not a separate browser
+ * a full-screen sheet with a grabber you can drag down to dismiss (like an
+ * iOS sheet) and an X for the same thing by tap — not a separate browser
  * that opens over the app and has to be switched back from by hand. The page
  * itself (`app-login/page.js`) tells this screen the moment it is done, via
- * `window.ReactNativeWebView.postMessage` — the same message the sheet is
- * shown, without any polling and without the app ever reading the page's
- * content, injecting a script into it, or touching its cookies. The sheet
- * then closes itself and sign-in completes.
+ * `window.ReactNativeWebView.postMessage` — without any polling and without
+ * the app ever reading the page's content, injecting a script into it, or
+ * touching its cookies. The sheet then closes itself and sign-in completes.
+ *
+ * Closing it any other way — the X, the drag, the Android back button —
+ * still checks once whether the pairing had actually finished first
+ * (`close`'s claim attempt below). That message can only be missed once,
+ * not lost forever: a person who watches KingsChat say "you're signed in"
+ * and then dismisses before the app notices should still end up signed in,
+ * not back at this screen.
  *
  * The code cannot come back to the phone directly: KingsChat locks a
  * developer project's redirect to the website's /auth/callback and it cannot
@@ -38,6 +56,12 @@ import { C, R, S } from './theme';
 const CLAIM_RETRIES = 5;
 const CLAIM_RETRY_MS = 500;
 
+// How far (or how fast) a drag on the grabber has to go before it counts as
+// "dismiss" rather than "let go and spring back".
+const DRAG_DISMISS_PX = 120;
+const DRAG_DISMISS_VELOCITY = 0.8;
+const SCREEN_H = Dimensions.get('window').height;
+
 interface Props {
   deviceId: string;
   appVersion: string;
@@ -45,6 +69,7 @@ interface Props {
 }
 
 export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props) {
+  const insets = useSafeAreaInsets();
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -52,6 +77,7 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
   const cancelled = useRef(false);
   const pairRef = useRef<{ pairId: string; secret: string } | null>(null);
   const finishingRef = useRef(false);
+  const [translateY] = useState(() => new Animated.Value(0));
 
   useEffect(() => () => {
     cancelled.current = true;
@@ -63,20 +89,49 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
     try {
       const pair = await pairStart(deviceId, appVersion);
       pairRef.current = { pairId: pair.pairId, secret: pair.secret };
+      translateY.setValue(0);
       setConsentUrl(pair.consentUrl);
     } catch (e) {
       setError((e as Error).message || 'Could not start sign in.');
     } finally {
       if (!cancelled.current) setStarting(false);
     }
-  }, [deviceId, appVersion]);
+  }, [deviceId, appVersion, translateY]);
 
-  const close = useCallback(() => {
+  /**
+   * Closing is never just "throw the sheet away". If this is the app's own
+   * post-success cleanup (`finishingRef` already true, set by `finish`
+   * below), there is nothing left to check — the session is already saved.
+   * Otherwise — the X, a drag, the back button — this is someone leaving
+   * before the app noticed anything, which includes the case where the
+   * pairing genuinely finished and only the notification missed: one claim
+   * attempt here catches that before the pairing is given up on for good.
+   */
+  const close = useCallback(async () => {
+    const pair = pairRef.current;
     setConsentUrl(null);
     setFinishing(false);
+    if (pair && !finishingRef.current) {
+      // A brief busy state rather than flashing back to plain "Sign in" —
+      // this check is usually near-instant either way.
+      setStarting(true);
+      try {
+        const session = await pairClaim(pair.pairId, pair.secret);
+        if (session) {
+          await saveSession(session);
+          pairRef.current = null;
+          if (!cancelled.current) onSignedIn(session);
+          return;
+        }
+      } catch {
+        // Not ready yet, or genuinely over — an ordinary dismissal either way.
+      } finally {
+        if (!cancelled.current) setStarting(false);
+      }
+    }
     pairRef.current = null;
     finishingRef.current = false;
-  }, []);
+  }, [onSignedIn]);
 
   const finish = useCallback(
     async (pair: { pairId: string; secret: string }) => {
@@ -93,15 +148,15 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
         }
         if (!session) {
           setError('Signed in, but the app is still waiting on it. Tap to try again.');
-          close();
+          void close();
           return;
         }
         await saveSession(session);
-        close();
+        void close();
         if (!cancelled.current) onSignedIn(session);
       } catch (err) {
         setError((err as Error).message || 'Sign in failed.');
-        close();
+        void close();
       }
     },
     [close, onSignedIn],
@@ -144,6 +199,42 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
     [finish],
   );
 
+  // Drag the grabber/header down to dismiss, the way an iOS sheet works.
+  // Scoped to that area only (via panHandlers below) so it never steals a
+  // scroll or a tap meant for the page inside the WebView. Created once
+  // (PanResponder owns native gesture-tracking state that must not be
+  // recreated every render) — safe to close over `close`/`translateY`
+  // directly since neither's identity ever actually changes after mount:
+  // `translateY` is the same Animated.Value object for the component's whole
+  // life, and `close`'s only real dependency (`onSignedIn`) is a stable
+  // useCallback from App.tsx. The lint rule below doesn't know Animated.Value
+  // isn't a ref and flags this as if it might read one during render — it
+  // never does; every handler here only runs from a later gesture event.
+  // eslint-disable-next-line react-hooks/refs
+  const [panResponder] = useState(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_evt, g) => Math.abs(g.dy) > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderMove: (_evt, g) => {
+        if (g.dy > 0) translateY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_evt, g) => {
+        if (g.dy > DRAG_DISMISS_PX || g.vy > DRAG_DISMISS_VELOCITY) {
+          Animated.timing(translateY, {
+            toValue: SCREEN_H,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(0);
+            void close();
+          });
+        } else {
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+        }
+      },
+    }),
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.wrap}>
       <View style={styles.badge}>
@@ -161,18 +252,18 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
         <Button label="Sign in with KingsChat" onPress={open} busy={starting} style={styles.cta} />
       </Card>
 
-      <Modal
-        visible={!!consentUrl}
-        animationType="slide"
-        onRequestClose={close}
-        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : undefined}
-      >
-        <View style={styles.sheet}>
-          <View style={styles.sheetHead}>
-            <Text style={styles.sheetTitle}>KingsChat</Text>
-            <Pressable onPress={close} hitSlop={12} style={styles.sheetClose} accessibilityLabel="Close">
-              <Glyph name="close" color={C.dim} size={16} />
-            </Pressable>
+      <Modal visible={!!consentUrl} animationType="slide" onRequestClose={() => void close()} transparent>
+        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+          <View style={{ paddingTop: insets.top }} {...panResponder.panHandlers}>
+            <View style={styles.grabberWrap}>
+              <View style={styles.grabber} />
+            </View>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>KingsChat</Text>
+              <Pressable onPress={() => void close()} hitSlop={12} style={styles.sheetClose} accessibilityLabel="Close">
+                <Glyph name="close" color={C.dim} size={16} />
+              </Pressable>
+            </View>
           </View>
           {finishing ? (
             <View style={styles.finishing}>
@@ -191,7 +282,7 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
               startInLoadingState
             />
           ) : null}
-        </View>
+        </Animated.View>
       </Modal>
     </ScrollView>
   );
@@ -218,6 +309,8 @@ const styles = StyleSheet.create({
   cta: { marginTop: S.xs },
   error: { color: C.bad, fontSize: 13, lineHeight: 19, marginBottom: S.sm },
   sheet: { flex: 1, backgroundColor: C.bg },
+  grabberWrap: { alignItems: 'center', paddingTop: S.xs, paddingBottom: 2 },
+  grabber: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.line },
   sheetHead: {
     flexDirection: 'row',
     alignItems: 'center',
