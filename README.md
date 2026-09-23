@@ -12,9 +12,9 @@ for an app that does not come from the Play Store.
 
 ## Then, in this order
 
-1. **Sign in with KingsChat.** The app opens KingsChat's own sign-in page in
-   your browser. Approve it, then return to the app — it picks up your account
-   by itself. Nothing to type, no codes to copy.
+1. **Sign in with KingsChat.** KingsChat's own sign-in opens inside the app.
+   Approve it and the sheet closes by itself — you never leave the app, and
+   there is nothing to type and no code to copy.
 2. **Settings → Alarm permissions.** Four switches decide whether an alarm
    really rings. Turn on any that show *Fix*, especially **Full screen alarms**
    — on Android 14 and up an app does not get that automatically, and without
@@ -32,18 +32,32 @@ network, with the app closed, and after a reboot.
 
 ## What this build is
 
-- Package `com.kingschat.kingsagent`, version 1.0.0, release build.
+- Package `com.kingschat.kingsagent`, version **1.2.3** (versionCode 7),
+  release build.
 - Signed with the Kings Agent release key
   (`SHA-1 C8:10:B5:C3:F5:EF:BA:8E:85:64:1F:DD:5C:1B:94:8A:17:EE:3B:A7`).
   A later version installs over this one only if it carries the same key.
 - Firebase project `kings-agent`, so push nudges work.
-- Includes the PR #1 review fixes (2026-09-22): sync only ever cancels a
-  phone's alarm on an explicit signal from the server (delivered or deleted),
-  never merely because a reminder is momentarily missing from a filtered
-  list — see that PR for detail.
+
+## New in 1.2.3
+
+**An alarm that fails to arm now says so.** If Android has taken exact-alarm
+access away — revoked in Settings, or withdrawn by a battery optimiser — the
+phone used to fail quietly and the server went on believing the alarm was
+set, so no KingsChat message was sent either. Nothing was delivered at all.
+The phone now reports the failure, the reminder falls back to arriving as a
+DM, and the agent can tell you in chat that the alarm did not go on.
+
+**A repeating reminder survives being dismissed.** Dismissing a daily alarm
+used to end the whole series — it never rang again. It now rolls forward to
+its next occurrence. Only cancelling it ends it.
+
+A one-shot whose moment has already passed is reported as expired rather than
+rung late, and the earlier 1.2.x work is included: the Home section, the
+single Alarms list, and sign-in that stays inside the app.
 
 ## If sign-in fails
 
-The app talks to the backend at `kcagent.up.railway.app`. This build needs the
-`companion-app-phase1` changes deployed there — until that is merged and live,
-sign-in will not complete.
+The app talks to the backend at `kcagent.up.railway.app`, and it needs the
+current backend deployed there. If sign-in hangs or reminders never sync,
+check that the deploy is up to date before looking at the phone.
