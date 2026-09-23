@@ -196,15 +196,31 @@ export async function createReminder(text: string, dueAt: number, repeat = 'none
   return d.reminder as ServerReminder;
 }
 
-/** Tell the server what this phone did with a reminder. */
+/**
+ * What this phone did with a reminder — never what it downloaded. A row that
+ * was fetched but not armed stays outstanding on the server, on purpose.
+ *
+ *   armed     the alarm is really set; this is what stops the DM going out too
+ *   blocked   the arm FAILED — `reason` is how the agent can tell the person
+ *             in chat that their alarm did not go on
+ *   expired   a one-shot already past due, refused rather than rung late
+ *   done      dismissed here (a repeat rolls forward server-side, never ends)
+ *   cancelled an explicit end, repeats included
+ *
+ * No `armed_at`: the server stamps its own, so a skewed device clock can't
+ * write the audit field.
+ */
+export type ReminderAck = 'armed' | 'blocked' | 'expired' | 'done' | 'cancelled';
+
 export async function patchReminder(
   id: string,
-  status: 'armed' | 'done' | 'cancelled',
+  status: ReminderAck,
   deviceId: string,
+  reason?: string,
 ) {
   return call(`/agent-connect/reminders/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ status, device_id: deviceId }),
+    body: JSON.stringify({ status, device_id: deviceId, ...(reason ? { reason } : {}) }),
   });
 }
 

@@ -40,6 +40,29 @@ export interface SyncResult {
   error?: string;
 }
 
+/**
+ * One-shots this session has already reported as expired. The server is
+ * idempotent about it, but without this a phone left on the Alarms screen
+ * re-PATCHes the same dead reminder on every resume for as long as the row
+ * lives — chatter with no new information in it.
+ */
+const expiredReported = new Set<string>();
+
+function reportExpired(reminderId: string, deviceId: string): void {
+  if (expiredReported.has(reminderId)) return;
+  expiredReported.add(reminderId);
+  patchReminder(reminderId, 'expired', deviceId).catch(() => {
+    // Offline. Drop it from the set so a later sync tries again.
+    expiredReported.delete(reminderId);
+  });
+}
+
+/** Whatever the native bridge threw, as something a person can read. */
+function armFailureReason(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? '');
+  return msg.trim().slice(0, 300) || 'The alarm could not be scheduled on this phone.';
+}
+
 export async function syncReminders(deviceId: string): Promise<SyncResult> {
   const result: SyncResult = { armed: 0, cancelled: 0, kept: 0, failed: 0 };
 
@@ -87,7 +110,17 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
     // precisely the state a just-fired alarm's own resume-triggered sync can
     // observe mid-flight. A later sync sees the explicit sent:true above and
     // cleans it up then.
-    if (r.repeat === 'none' && r.due_at <= Date.now()) continue;
+    if (r.repeat === 'none' && r.due_at <= Date.now()) {
+      // Say so, rather than skipping it in silence every sync forever: an
+      // unreported one stays outstanding in every future pull, so the list
+      // only grows. Reported ONLY when this phone isn't already holding it —
+      // an armed-and-just-fired alarm looks identical from here, and that one
+      // is a delivery, not an expiry. The server applies the same guard from
+      // its side (it refuses to expire a row any device has armed), so the
+      // mid-flight case is covered even if this check is wrong.
+      if (!armedServerIds.has(alarmId)) reportExpired(r.id, deviceId);
+      continue;
+    }
     // A REPEATING reminder with a stale due_at is safe to arm as-is and does
     // NOT need rolling forward here first: armNative's underlying bridge
     // (AlarmModule.schedule -> AlarmScheduler.schedule, native-patches/alarm/
@@ -125,8 +158,15 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
       // here means a duplicate message, not a missed alarm, so it must never
       // undo the arming.
       patchReminder(r.id, 'armed', deviceId).catch(() => {});
-    } catch {
+    } catch (e) {
       result.failed += 1;
+      // Arming FAILED — exact-alarm access revoked, permission withdrawn. The
+      // server must hear about it: it keeps `deliver` on "dm" so the reminder
+      // still arrives as a KingsChat message, and the reason is what lets the
+      // agent tell the person their alarm did not go on. Counting this into
+      // `failed` and saying nothing, which is what used to happen, produced
+      // exactly the silence this app exists to prevent.
+      patchReminder(r.id, 'blocked', deviceId, armFailureReason(e)).catch(() => {});
     }
   }
 
@@ -152,7 +192,14 @@ export async function syncReminders(deviceId: string): Promise<SyncResult> {
   return result;
 }
 
-/** The person dismissed or completed an alarm on the phone. */
+/**
+ * The person dismissed or completed an alarm on the phone.
+ *
+ * Safe to call for a REPEAT: the server rolls a repeating reminder to its next
+ * occurrence rather than ending it (agentStore.updateReminderStatus), so
+ * dismissing today's alarm no longer silently kills tomorrow's. Only a cancel
+ * ends a repeat.
+ */
 export async function reportAlarmDone(alarmId: string, deviceId: string): Promise<void> {
   if (!isServerAlarm(alarmId)) return;
   try {
