@@ -37,6 +37,10 @@ network, with the app closed, and after a reboot.
   (`SHA-1 C8:10:B5:C3:F5:EF:BA:8E:85:64:1F:DD:5C:1B:94:8A:17:EE:3B:A7`).
   A later version installs over this one only if it carries the same key.
 - Firebase project `kings-agent`, so push nudges work.
+- Includes the PR #1 review fixes (2026-09-22): sync only ever cancels a
+  phone's alarm on an explicit signal from the server (delivered or deleted),
+  never merely because a reminder is momentarily missing from a filtered
+  list — see that PR for detail.
 
 ## If sign-in fails
 
