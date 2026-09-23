@@ -47,7 +47,11 @@ export default function MediaScreen({ media, onBack }: { media: MyDocument[]; on
           <View style={styles.grid}>
             {media.map((item) => {
               const url = item.file_url || item.pdf_url;
-              const isVideo = VIDEO_EXT.test(url || '') || VIDEO_EXT.test(item.title || '');
+              // Same blind spot as isMedia's: the URL is an extensionless short
+              // link and the title is a name, not a filename, so `kind` is what
+              // actually says this is a clip. Without it a video falls through to
+              // the image viewer, which can only ever show a blank frame.
+              const isVideo = item.kind === 'video' || VIDEO_EXT.test(url || '') || VIDEO_EXT.test(item.title || '');
               return (
                 <Pressable
                   key={item.id}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kings Agent",
     "slug": "kings-agent",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.kingschat.kingsagent",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#0B1020",
         "foregroundImage": "./assets/android-icon-foreground.png",

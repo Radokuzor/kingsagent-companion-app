@@ -28,9 +28,19 @@ export type HomeRoute = 'home' | 'documents' | 'media' | 'contacts' | 'lists' | 
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|mp4|mov|webm|m4v)$/i;
 
-/** Pictures and video the agent generated or was sent, as opposed to reading matter. */
+/**
+ * Pictures and video the agent generated or was sent, as opposed to reading matter.
+ *
+ * `kind` is the only reliable signal, and both media kinds have to be listed
+ * here: a media row's `file_url` is one of our own short links
+ * (`/l/<code>`), which carries no file extension at all, and its title is
+ * whatever the thing is called ("Holographic Objects") rather than a
+ * filename. So the extension fallback below catches neither — it is a last
+ * resort for rows that predate `kind`, not the main path. Miss `'video'`
+ * here and a clip files itself under Documents.
+ */
 export function isMedia(doc: { kind?: string; file_url?: string | null; title?: string }): boolean {
-  if (doc.kind === 'image') return true;
+  if (doc.kind === 'image' || doc.kind === 'video') return true;
   return IMAGE_EXT.test(doc.file_url || '') || IMAGE_EXT.test(doc.title || '');
 }
 
