@@ -154,16 +154,11 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
 
       <Card style={styles.card}>
         <Text style={styles.h2}>Sign in with KingsChat</Text>
-        <Text style={styles.body}>
-          Your reminders ring here like a real alarm — offline, with the app closed. Signing in is
-          also what lets the agent message you, and send messages as you when you ask it to.
-        </Text>
+        <Text style={styles.body}>Enable local notifications and alarms, and set up your Kings Agent profile.</Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button label="Sign in with KingsChat" onPress={open} busy={starting} style={styles.cta} />
-
-        <Text style={styles.small}>KingsChat&apos;s own sign-in screen opens right here. We never see your password.</Text>
       </Card>
 
       <Modal
@@ -175,9 +170,8 @@ export default function SignInScreen({ deviceId, appVersion, onSignedIn }: Props
         <View style={styles.sheet}>
           <View style={styles.sheetHead}>
             <Text style={styles.sheetTitle}>KingsChat</Text>
-            <Pressable onPress={close} hitSlop={12} style={styles.sheetClose}>
-              <Glyph name="back" color={C.dim} size={16} />
-              <Text style={styles.sheetCloseText}>Close</Text>
+            <Pressable onPress={close} hitSlop={12} style={styles.sheetClose} accessibilityLabel="Close">
+              <Glyph name="close" color={C.dim} size={16} />
             </Pressable>
           </View>
           {finishing ? (
@@ -222,7 +216,6 @@ const styles = StyleSheet.create({
   h2: { color: C.text, fontSize: 18, fontWeight: '700', marginBottom: S.xs },
   body: { color: C.dim, fontSize: 14, lineHeight: 21, marginBottom: S.md },
   cta: { marginTop: S.xs },
-  small: { color: C.faint, fontSize: 12, lineHeight: 18, marginTop: S.sm, textAlign: 'center' },
   error: { color: C.bad, fontSize: 13, lineHeight: 19, marginBottom: S.sm },
   sheet: { flex: 1, backgroundColor: C.bg },
   sheetHead: {
@@ -235,8 +228,14 @@ const styles = StyleSheet.create({
     borderBottomColor: C.line,
   },
   sheetTitle: { color: C.text, fontSize: 15, fontWeight: '700' },
-  sheetClose: { flexDirection: 'row', alignItems: 'center', gap: 4, padding: 4 },
-  sheetCloseText: { color: C.dim, fontSize: 14, fontWeight: '600' },
+  sheetClose: {
+    width: 30,
+    height: 30,
+    borderRadius: R.pill,
+    backgroundColor: C.cardHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   finishing: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   finishingText: { color: C.dim, fontSize: 14 },
 });

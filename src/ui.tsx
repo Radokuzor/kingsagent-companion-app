@@ -217,6 +217,7 @@ export type GlyphName =
   | 'cog'
   | 'chevron'
   | 'plus'
+  | 'close'
   | 'back'
   | 'search';
 
@@ -308,6 +309,13 @@ export function Glyph({ name, color = C.accent, size = 18 }: { name: GlyphName; 
         <View style={box}>
           <View style={{ position: 'absolute', top: 8.1 * u, left: 2 * u, width: 14 * u, height: 2 * u, borderRadius: 1, backgroundColor: color }} />
           <View style={{ position: 'absolute', left: 8.1 * u, top: 2 * u, height: 14 * u, width: 2 * u, borderRadius: 1, backgroundColor: color }} />
+        </View>
+      );
+    case 'close':
+      return (
+        <View style={box}>
+          <View style={{ position: 'absolute', top: 8.1 * u, left: 2 * u, width: 14 * u, height: 1.8 * u, borderRadius: 1, backgroundColor: color, transform: [{ rotate: '45deg' }] }} />
+          <View style={{ position: 'absolute', top: 8.1 * u, left: 2 * u, width: 14 * u, height: 1.8 * u, borderRadius: 1, backgroundColor: color, transform: [{ rotate: '-45deg' }] }} />
         </View>
       );
     case 'chevron':
